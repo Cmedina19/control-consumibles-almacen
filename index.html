@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control de Consumibles | César Medina</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#17202a;--muted:#64748b;--line:#dbe2e8;--accent:#2563eb;--ok:#15803d;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+header{background:#17202a;color:#fff;padding:18px 24px;display:flex;justify-content:space-between;gap:20px}
+h1{margin:0;font-size:25px}header small{color:#cbd5e1}.author{text-align:right;font-size:13px;color:#e2e8f0}
+nav{background:#fff;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;padding:0 18px}
+nav button{border:0;background:none;padding:13px 12px;cursor:pointer;font-weight:700;color:var(--muted);border-bottom:3px solid transparent}
+nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1200px;margin:auto;padding:22px}.view{display:none}.view.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.kpi span{display:block;color:var(--muted);font-size:13px}.kpi b{font-size:26px;display:block;margin-top:8px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}input,select{padding:9px;border:1px solid var(--line);border-radius:8px}
+.btn{border:0;border-radius:8px;padding:9px 13px;cursor:pointer;font-weight:700}.blue{background:var(--accent);color:#fff}.gray{background:#e5e7eb}
+.notice{padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e3a8a;margin-bottom:14px}
+.muted{color:var(--muted)}.table-wrap{overflow:auto}.table-wrap table{border-collapse:collapse;width:100%;min-width:720px;background:#fff}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{background:#f8fafc}
+footer{text-align:center;color:var(--muted);font-size:12px;padding:30px}
+</style>
+</head>
+<body>
+<header>
+<div><h1>CONTROL DE CONSUMIBLES</h1><small>Operaciones de Almacén | Demo</small></div>
+<div class="author">Autor: <b>César Medina</b><br>Proyecto 2026</div>
+</header>
+
+<nav>
+<button class="active" data-view="dashboard">Dashboard</button>
+<button data-view="ots">Órdenes de trabajo</button>
+<button data-view="catalog">Catálogo</button>
+<button data-view="import">Importar ERP</button>
+<button data-view="report">Reporte</button>
+<button data-view="quality">Calidad de datos</button>
+<button data-view="backup">Respaldo</button>
+</nav>
+
+<main>
+<section id="dashboard" class="view active">
+<h2>Dashboard</h2>
+<div class="cards">
+<div class="card kpi"><span>Emisiones</span><b id="kEm">0</b></div>
+<div class="card kpi"><span>OT MTO</span><b id="kOT">0</b></div>
+<div class="card kpi"><span>Entregado</span><b id="kDel">0</b></div>
+<div class="card kpi"><span>Recuperado</span><b id="kRec">0</b></div>
+<div class="card kpi"><span>Pendiente</span><b id="kPend">0</b></div>
+</div>
+<div class="card"><h3>Pendientes</h3><div id="pending"></div></div>
+</section>
+
+<section id="ots" class="view">
+<h2>Órdenes de trabajo MTO</h2>
+<div class="card"><div class="toolbar"><input id="otSearch" placeholder="Buscar OT o parte..." oninput="renderOTs()"></div><div id="otTable"></div></div>
+</section>
+
+<section id="catalog" class="view">
+<h2>Catálogo maestro</h2>
+<div class="card">
+<div class="toolbar">
+<input id="part" placeholder="No. parte"><input id="desc" placeholder="Descripción">
+<select id="udm"><option>Pza</option><option>Lt</option><option>Gal</option></select>
+<button class="btn blue" onclick="addPart()">Agregar</button>
+<input id="catSearch" placeholder="Buscar..." oninput="renderCatalog()">
+</div>
+<div id="catalogTable"></div>
+</div>
+</section>
+
+<section id="import" class="view">
+<h2>Importar ERP</h2>
+<div class="notice"><b>Reglas:</b> Tipo STK-MTL, OT MTO, parte activa, cantidad mayor a cero y Trans. única. Las OT SRV se ignoran.</div>
+<div class="card"><input type="file" id="csv" accept=".csv,.txt"><button class="btn blue" onclick="importCSV()">Procesar CSV</button><div id="importResult"></div></div>
+</section>
+
+<section id="report" class="view">
+<h2>Reporte</h2><div class="card"><button class="btn blue" onclick="exportCSV()">Exportar CSV</button><div id="reportTable"></div></div>
+</section>
+
+<section id="quality" class="view">
+<h2>Calidad de datos</h2><div class="card">
+<p class="muted">Revisa duplicados, OT no MTO, partes fuera de catálogo y recuperaciones que excedan la entrega.</p>
+<button class="btn blue" onclick="quality()">Actualizar revisión</button><div id="qualityResult"></div>
+</div></section>
+
+<section id="backup" class="view">
+<h2>Respaldo</h2><div class="card"><button class="btn blue" onclick="backup()">Descargar respaldo JSON</button></div>
+</section>
+</main>
+
+<footer>Control de Consumibles · Proyecto de César Medina · Demo sin datos reales</footer>
+
+<script>
+var CK='cc_demo_catalog',EK='cc_demo_em',RK='cc_demo_rec';
+var seed=[
+{parte:'DEMO-ACE-01',descripcion:'Aceite de ejemplo 1 L',udm:'Lt',activo:true},
+{parte:'DEMO-GRA-01',descripcion:'Grasa multipropósito de ejemplo',udm:'Pza',activo:true},
+{parte:'DEMO-AER-01',descripcion:'Aerosol de mantenimiento de ejemplo',udm:'Pza',activo:true},
+{parte:'DEMO-EXT-01',descripcion:'Extintor de demostración',udm:'Pza',activo:true}
+];
+function get(k,d){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d||[]))}catch(e){return d||[]}}
+function put(k,v){localStorage.setItem(k,JSON.stringify(v))}
+if(!localStorage.getItem(CK))put(CK,seed);
+function catalog(){return get(CK,seed)}function emissions(){return get(EK,[])}function recoveries(){return get(RK,[])}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]})}
+function nav(view){
+document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('active',b.dataset.view===view)});
+document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active',v.id===view)});
+if(view==='dashboard')renderDash();if(view==='ots')renderOTs();if(view==='catalog')renderCatalog();if(view==='report')renderReport();
+}
+document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){nav(b.dataset.view)}});
+
+function balances(){
+var m={}; emissions().forEach(function(e){var k=e.ot+'||'+e.parte;if(!m[k])m[k]={ot:e.ot,parte:e.parte,desc:e.desc,udm:e.udm,ent:0};m[k].ent+=Number(e.cantidad)||0});
+recoveries().forEach(function(r){var k=r.ot+'||'+r.parte;if(m[k])m[k].rec=(m[k].rec||0)+(Number(r.cantidad)||0)});
+return Object.keys(m).map(function(k){var x=m[k];x.rec=x.rec||0;x.pend=Math.max(0,x.ent-x.rec);return x});
+}
+function renderDash(){
+var e=emissions(),b=balances();
+document.getElementById('kEm').textContent=e.length;
+document.getElementById('kOT').textContent=new Set(e.map(function(x){return x.ot})).size;
+document.getElementById('kDel').textContent=e.reduce(function(a,x){return a+(Number(x.cantidad)||0)},0);
+document.getElementById('kRec').textContent=b.reduce(function(a,x){return a+x.rec},0);
+document.getElementById('kPend').textContent=b.reduce(function(a,x){return a+x.pend},0);
+var p=b.filter(function(x){return x.pend>0});
+document.getElementById('pending').innerHTML=p.length?'<div class="table-wrap"><table><tr><th>OT</th><th>Parte</th><th>Descripción</th><th>Entregado</th><th>Recuperado</th><th>Pendiente</th></tr>'+p.map(function(x){return '<tr><td>'+esc(x.ot)+'</td><td>'+esc(x.parte)+'</td><td>'+esc(x.desc)+'</td><td>'+x.ent+' '+esc(x.udm)+'</td><td>'+x.rec+'</td><td><b>'+x.pend+'</b></td></tr>'}).join('')+'</table></div>':'<p class="muted">Sin pendientes.</p>';
+}
+var visibleOT=[];
+function renderOTs(){
+var q=(document.getElementById('otSearch').value||'').toLowerCase();
+visibleOT=balances().filter(function(x){return (x.ot+' '+x.parte+' '+x.desc).toLowerCase().indexOf(q)>=0});
+document.getElementById('otTable').innerHTML=visibleOT.length?'<div class="table-wrap"><table><tr><th>OT</th><th>Parte</th><th>Descripción</th><th>Entregado</th><th>Recuperado</th><th>Pendiente</th><th>Acción</th></tr>'+visibleOT.map(function(x,i){return '<tr><td>'+esc(x.ot)+'</td><td>'+esc(x.parte)+'</td><td>'+esc(x.desc)+'</td><td>'+x.ent+' '+esc(x.udm)+'</td><td>'+x.rec+'</td><td>'+x.pend+'</td><td>'+(x.pend?'<button class="btn gray" onclick="recover('+i+')">Registrar recuperación</button>':'Completo')+'</td></tr>'}).join('')+'</table></div>':'<p class="muted">No hay registros.</p>';
+}
+function recover(i){
+var x=visibleOT[i],v=prompt('Cantidad recuperada para '+x.ot+' / '+x.parte+'. Pendiente: '+x.pend);
+if(v===null)return;var n=Number(v);
+if(!Number.isFinite(n)||n<=0||n>x.pend){alert('Cantidad inválida.');return}
+var r=recoveries();r.push({ot:x.ot,parte:x.parte,cantidad:n,fecha:new Date().toISOString()});put(RK,r);renderOTs();renderDash();alert('Recuperación registrada.');
+}
+function renderCatalog(){
+var q=(document.getElementById('catSearch').value||'').toLowerCase(),c=catalog().filter(function(x){return (x.parte+' '+x.descripcion).toLowerCase().indexOf(q)>=0});
+document.getElementById('catalogTable').innerHTML='<div class="table-wrap"><table><tr><th>Parte</th><th>Descripción</th><th>UDM</th><th>Estado</th><th>Acción</th></tr>'+c.map(function(x){return '<tr><td>'+esc(x.parte)+'</td><td>'+esc(x.descripcion)+'</td><td>'+esc(x.udm)+'</td><td>'+x.activo?'Activo':'Inactivo'+'</td><td><button class="btn gray" onclick="togglePart(\''+esc(x.parte)+'\')">'+(x.activo?'Desactivar':'Activar')+'</button></td></tr>'}).join('')+'</table></div>';
+}
+function addPart(){
+var parte=document.getElementById('part').value.trim(),desc=document.getElementById('desc').value.trim(),udm=document.getElementById('udm').value;
+if(!parte||!desc){alert('Captura parte y descripción.');return}
+var c=catalog();if(c.some(function(x){return x.parte===parte})){alert('La parte ya existe.');return}
+c.push({parte:parte,descripcion:desc,udm:udm,activo:true});put(CK,c);document.getElementById('part').value='';document.getElementById('desc').value='';renderCatalog();
+}
+function togglePart(parte){var c=catalog(),x=c.find(function(y){return y.parte===parte});if(x){x.activo=!x.activo;put(CK,c);renderCatalog()}}
+function parseCSV(text){
+var lines=text.replace(/^\\uFEFF/,'').split(/\\r?\\n/).filter(function(x){return x.trim()});if(!lines.length)return[];
+var delim=lines[0].indexOf(';')>=0?';':',';var h=lines[0].split(delim).map(function(x){return x.replace(/^"|"$/g,'').trim()});
+return lines.slice(1).map(function(line){var v=line.split(delim).map(function(x){return x.replace(/^"|"$/g,'').trim()}),o={};h.forEach(function(k,i){o[k]=v[i]||''});return o});
+}
+async function importCSV(){
+var f=document.getElementById('csv').files[0];if(!f){alert('Selecciona un CSV.');return}
+var data=parseCSV(await f.text()),active=new Map(catalog().filter(function(x){return x.activo}).map(function(x){return [x.parte,x]})),old=new Set(emissions().map(function(x){return x.trans})),arr=emissions(),ins=0,dup=0,ign=0;
+data.forEach(function(r){
+var tipo=(r['Tipo']||'').trim().toUpperCase(),parte=(r['Parte']||'').trim(),ot=(r['Trabajo']||'').trim(),trans=(r['Trans.']||'').trim(),qty=Number((r['Cantidad']||'').replace(',','.'));
+if(old.has(trans)){dup++;return}
+if(tipo!=='STK-MTL'||!/^MTO/i.test(ot)||!active.has(parte)||!trans||!Number.isFinite(qty)||qty<1){ign++;return}
+arr.push({trans:trans,ot:ot,parte:parte,desc:active.get(parte).descripcion,udm:active.get(parte).udm,cantidad:qty,fecha:r['Fecha trans.']||'',usuario:r['ID usuario']||''});old.add(trans);ins++;
+});
+put(EK,arr);renderDash();document.getElementById('importResult').innerHTML='<div class="notice">Importación terminada: '+data.length+' leídas · '+ins+' nuevas · '+dup+' duplicadas · '+ign+' ignoradas.</div>';alert('Importación terminada.');
+}
+function renderReport(){
+var b=balances();document.getElementById('reportTable').innerHTML='<div class="table-wrap"><table><tr><th>OT</th><th>Parte</th><th>Descripción</th><th>Entregado</th><th>UDM</th><th>Recuperado</th><th>Pendiente</th></tr>'+b.map(function(x){return '<tr><td>'+esc(x.ot)+'</td><td>'+esc(x.parte)+'</td><td>'+esc(x.desc)+'</td><td>'+x.ent+'</td><td>'+esc(x.udm)+'</td><td>'+x.rec+'</td><td>'+x.pend+'</td></tr>'}).join('')+'</table></div>';
+}
+function exportCSV(){
+var b=balances(),lines=[['OT','Parte','Descripción','Entregado','UDM','Recuperado','Pendiente']].concat(b.map(function(x){return [x.ot,x.parte,x.desc,x.ent,x.udm,x.rec,x.pend]}));
+var csv='\\uFEFF'+lines.map(function(r){return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'}).join(';')}).join('\\r\\n'),a=document.createElement('a');
+a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='reporte_control_consumibles_demo.csv';a.click();
+}
+function quality(){
+var e=emissions(),seen=new Set(),parts=new Set(catalog().map(function(x){return x.parte})),issues=0;
+e.forEach(function(x){if(seen.has(x.trans))issues++;seen.add(x.trans);if(!/^MTO/i.test(x.ot))issues++;if(!parts.has(x.parte))issues++});
+balances().forEach(function(x){if(x.rec>x.ent)issues++});
+document.getElementById('qualityResult').innerHTML=issues?'<div class="notice">Revisión terminada. Hallazgos: <b>'+issues+'</b>.</div>':'<div class="notice">Revisión terminada. No se detectaron hallazgos.</div>';
+alert(issues?'Revisión terminada: '+issues+' hallazgo(s).':'Revisión terminada. Todo listo.');
+}
+function backup(){
+var data={app:'Control de Consumibles Demo',author:'César Medina',created_at:new Date().toISOString(),catalog:catalog(),emisiones:emissions(),recuperaciones:recoveries()},a=document.createElement('a');
+a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='respaldo_control_consumibles_demo.json';a.click();
+}
+renderDash();renderOTs();renderCatalog();renderReport();
+</script>
+</body>
+</html>
